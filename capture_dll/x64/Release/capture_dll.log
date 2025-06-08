@@ -1,0 +1,12 @@
+﻿  pch.cpp
+  dllmain.cpp
+  utils.cpp
+C:\Users\Datur\source\repos\capture_dll\capture_dll\utils.cpp(43,46): warning C4267: 'argument': conversion from 'size_t' to 'DWORD', possible loss of data
+  (compiling source file '/utils.cpp')
+  
+     Creating library C:\Users\Datur\source\repos\capture_dll\x64\Release\capture_dll.lib and object C:\Users\Datur\source\repos\capture_dll\x64\Release\capture_dll.exp
+  Generating code
+  Previous IPDB not found, fall back to full compilation.
+  All 152 functions were compiled because no usable IPDB/IOBJ from previous compilation was found.
+  Finished generating code
+  capture_dll.vcxproj -> C:\Users\Datur\source\repos\capture_dll\x64\Release\capture_dll.dll

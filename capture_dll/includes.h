@@ -8,10 +8,6 @@
 #include <Windows.h>
 #include <winternl.h>
 #include <dxgi1_2.h>
-#include <mfapi.h>
-#include <mfidl.h>
-#include <mfreadwrite.h>
-#include <mfobjects.h>
 #include <wrl/client.h>
 #include <chrono>
 #include <thread>

@@ -1,15 +1,11 @@
 #include "pch.h"
 
-
 #include "portable_executable.h"
 #include "utils.h"
 #include "globals.h"
 
 using namespace Microsoft::WRL;
 
-#pragma comment(lib, "mfplat.lib")
-#pragma comment(lib, "mfreadwrite.lib")
-#pragma comment(lib, "mfuuid.lib")
 #pragma comment(lib, "d3d11.lib")
 #pragma comment(lib, "dxgi.lib")
 
@@ -17,12 +13,11 @@ using namespace Microsoft::WRL;
 #define HEIGHT 1080
 #define FPS 60
 #define DURATION_SECONDS 10
-#define OUTPUT_FILE L"C:\\Users\\Datur\\Videos\\output.mp4"
+// #define OUTPUT_FILE L"C:\\Users\\Datur\\Videos\\output.mp4"
 
 ComPtr<ID3D11Device>           g_d3dDevice;
 ComPtr<ID3D11DeviceContext>    g_d3dContext;
 ComPtr<IDXGIOutputDuplication> g_duplication;
-ComPtr<IMFSinkWriter>          g_sinkWriter;
 DWORD                          g_streamIndex;
 
 
@@ -30,9 +25,13 @@ DWORD                          g_streamIndex;
 bool InitD3DAndDuplication()
 {
     D3D_FEATURE_LEVEL level;
-    D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr,
+    auto hr = D3D11CreateDevice(nullptr, D3D_DRIVER_TYPE_HARDWARE, nullptr,
         D3D11_CREATE_DEVICE_BGRA_SUPPORT, nullptr, 0,
         D3D11_SDK_VERSION, &g_d3dDevice, &level, &g_d3dContext);
+
+    if (FAILED(hr)) {
+        MessageBoxA(NULL, "D3D11CreateDevice failed!!", "capturedll", MB_OK);
+    }
 
     ComPtr<IDXGIDevice> dxgiDevice;
     g_d3dDevice.As(&dxgiDevice);
@@ -47,9 +46,7 @@ bool InitD3DAndDuplication()
     DXGI_ADAPTER_DESC desc;
     adapter->GetDesc(&desc);
    
-   // Utils::DebugLog(L"dxgi adapter description: %ws", desc.Description);
-
-    HRESULT hr = adapter->EnumOutputs(0, &output);
+    hr = adapter->EnumOutputs(0, &output);
 
     if (FAILED(hr)) {
  //       Utils::DebugLog(L"EnumOutputs failed: 0x%08X\n", hr);
@@ -62,69 +59,52 @@ bool InitD3DAndDuplication()
     return true;
 }
 
-bool InitMediaFoundation()
+bool SaveFrameAsBMP(int frameIndex, BYTE* data, int width, int height)
 {
-    MFStartup(MF_VERSION);
+    char filename[256];
+    sprintf_s(filename, "C:\\Windows\\Temp\\frame_%04d.bmp", frameIndex);
 
-    ComPtr<IMFAttributes> attr;
-    MFCreateAttributes(&attr, 1);
-    auto hr = MFCreateSinkWriterFromURL(OUTPUT_FILE, nullptr, attr.Get(), &g_sinkWriter);
+    DWORD headersSize = sizeof(BITMAPFILEHEADER) + sizeof(BITMAPINFOHEADER);
+    DWORD imageSize = width * height * 4;
+    DWORD totalSize = headersSize + imageSize;
 
-    if (FAILED(hr)) {
-        char errorMsg[256];
-        StringCchPrintfA(errorMsg, sizeof(errorMsg),
-            "Failed MFCreateSinkWriterFromURL!\nHRESULT: 0x%08X", hr);
+    HANDLE hFile = CreateFileA(filename, GENERIC_WRITE, 0, nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
 
-        MessageBoxA(NULL, errorMsg, "capturedll", MB_OK | MB_ICONERROR);
+
+
+    if (hFile == INVALID_HANDLE_VALUE)
+    {
+        DWORD err = GetLastError();
+
+        char msg[256];
+        sprintf_s(msg, sizeof(msg), "Invalid Handle Val!!\nGetLastError = %lu (0x%08lX)", err, err);
+
+        MessageBoxA(NULL, msg, "capturedll", MB_OK | MB_ICONERROR);
+        return false;
     }
-    ComPtr<IMFMediaType> mediaTypeOut;
-    MFCreateMediaType(&mediaTypeOut);
-    MessageBoxA(NULL, "MFCreateMediaType called!!", "capturedll", MB_OK);
 
+    BITMAPFILEHEADER fileHeader = { 0 };
+    fileHeader.bfType = 0x4D42; // 'BM'
+    fileHeader.bfSize = totalSize;
+    fileHeader.bfOffBits = headersSize;
 
+    BITMAPINFOHEADER infoHeader = { 0 };
+    infoHeader.biSize = sizeof(BITMAPINFOHEADER);
+    infoHeader.biWidth = width;
+    infoHeader.biHeight = -height; // negative to store top-down
+    infoHeader.biPlanes = 1;
+    infoHeader.biBitCount = 32;
+    infoHeader.biCompression = BI_RGB;
 
-    mediaTypeOut->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
-    mediaTypeOut->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_H264);
-    mediaTypeOut->SetUINT32(MF_MT_AVG_BITRATE, 8000000);
-    mediaTypeOut->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
+    DWORD written;
+    WriteFile(hFile, &fileHeader, sizeof(fileHeader), &written, nullptr);
+    WriteFile(hFile, &infoHeader, sizeof(infoHeader), &written, nullptr);
+    WriteFile(hFile, data, imageSize, &written, nullptr);
+    CloseHandle(hFile);
 
-
-    MessageBoxA(NULL, "MediaTypeOUt inited!!", "capturedll", MB_OK);
-
-    MFSetAttributeSize(mediaTypeOut.Get(), MF_MT_FRAME_SIZE, WIDTH, HEIGHT);
-    MFSetAttributeRatio(mediaTypeOut.Get(), MF_MT_FRAME_RATE, FPS, 1);
-    MFSetAttributeRatio(mediaTypeOut.Get(), MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
-
-
-    MessageBoxA(NULL, "MFSetAttributeRatio called 111111!", "capturedll", MB_OK);
-
-
-    g_sinkWriter->AddStream(mediaTypeOut.Get(), &g_streamIndex);
-    MessageBoxA(NULL, "g_sinkWriter->AddStream called!!", "capturedll", MB_OK);
-
-    ComPtr<IMFMediaType> mediaTypeIn;
-    MFCreateMediaType(&mediaTypeIn);
-    mediaTypeIn->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
-    mediaTypeIn->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_ARGB32);
-
-    MessageBoxA(NULL, "mediaTypeIn->SetGUID called!!", "capturedll", MB_OK);
-
-
-    MFSetAttributeSize(mediaTypeIn.Get(), MF_MT_FRAME_SIZE, WIDTH, HEIGHT);
-    MFSetAttributeRatio(mediaTypeIn.Get(), MF_MT_FRAME_RATE, FPS, 1);
-    MFSetAttributeRatio(mediaTypeIn.Get(), MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
-
-    MessageBoxA(NULL, "MFSetAttributeRatio called!!", "capturedll", MB_OK);
-
-    mediaTypeIn->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
-    g_sinkWriter->SetInputMediaType(g_streamIndex, mediaTypeIn.Get(), nullptr);
-
-    MessageBoxA(NULL, "g_sinkWriter->SetInputMediaType called!!", "capturedll", MB_OK);
-
-
-    g_sinkWriter->BeginWriting();
     return true;
 }
+
 
 void RecordLoop()
 {
@@ -155,10 +135,11 @@ void RecordLoop()
 
             ComPtr<ID3D11Texture2D> stagingTex;
 
+
             HRESULT hr = g_d3dDevice->CreateTexture2D(&stagingDesc, nullptr, &stagingTex);
 
             if (FAILED(hr)) {
-                OutputDebugString(L"Failed to create staging texture\n");
+                MessageBoxA(NULL, "Failed to create staging texture!!", "capturedll", MB_OK);
                 return;
             }
             
@@ -167,23 +148,15 @@ void RecordLoop()
             g_d3dContext->CopyResource(stagingTex.Get(), acquiredTex.Get());
 
             hr = g_d3dContext->Map(stagingTex.Get(), 0, D3D11_MAP_READ, 0, &mapped);
-            
+
             if (FAILED(hr)) {
-                OutputDebugString(L"Map failed on staging texture\n");
+                MessageBoxA(NULL, "Map failed on staging texture!!", "capturedll", MB_OK);
                 return;
             }
 
-            ComPtr<IMFSample> sample;
-            MFCreateSample(&sample);
-
-            ComPtr<IMFMediaBuffer> buffer;
-            MFCreateMemoryBuffer(WIDTH * HEIGHT * 4, &buffer);
-
-            BYTE* pData = nullptr;
             DWORD maxLen = 0;
-            buffer->Lock(&pData, &maxLen, nullptr);
 
-
+            BYTE* pData = new BYTE[WIDTH * HEIGHT * 4]; // Allocate enough memory for the whole frame
 
             for (UINT y = 0; y < HEIGHT; ++y)
             {
@@ -194,20 +167,13 @@ void RecordLoop()
                 );
             }
 
-            buffer->Unlock();
-            buffer->SetCurrentLength(WIDTH * HEIGHT * 4);
-
-            sample->AddBuffer(buffer.Get());
-
             auto now = std::chrono::high_resolution_clock::now();
             auto elapsed = std::chrono::duration_cast<std::chrono::microseconds>(now - startTime).count();
             LONGLONG sampleTime = elapsed * 10; // convert microseconds to 100-nanosecond units
 
-            sample->SetSampleTime(sampleTime);
-            sample->SetSampleDuration(frameDuration); // keep duration fixed
+            SaveFrameAsBMP(frameCount, pData, WIDTH, HEIGHT);
 
-
-            g_sinkWriter->WriteSample(g_streamIndex, sample.Get()); 
+            delete[] pData;
 
             g_d3dContext->Unmap(stagingTex.Get(), 0);
             g_duplication->ReleaseFrame();
@@ -215,19 +181,12 @@ void RecordLoop()
         }
         std::this_thread::sleep_for(std::chrono::milliseconds(1000 / FPS));
     }
-
-    g_sinkWriter->Finalize();
-    MFShutdown();
 }
 
 
 void StartRecording()
 {
     InitD3DAndDuplication();
-    InitMediaFoundation();
-
-    MessageBoxA(NULL, "media found!!", "capturedll", MB_OK);
-
     RecordLoop();
 }
 

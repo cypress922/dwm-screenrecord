@@ -1,0 +1,7 @@
+﻿  pch.cpp
+  dllmain.cpp
+  Generating code
+  Previous IPDB not found, fall back to full compilation.
+  All 2 functions were compiled because no usable IPDB/IOBJ from previous compilation was found.
+  Finished generating code
+  dummydll.vcxproj -> C:\Users\Datur\source\repos\capture_dll\x64\Release\dummydll.dll

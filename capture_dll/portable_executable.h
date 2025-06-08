@@ -19,8 +19,6 @@ namespace PE
 
 		auto import_desc = (IMAGE_IMPORT_DESCRIPTOR*)(base + rva);
 
-		MessageBoxA(NULL, "Injected 3332!!", "capturedll", MB_OK);
-
 		for (; import_desc->FirstThunk; ++import_desc)
 		{
 			auto mod_name = (char*)(base + import_desc->Name);
